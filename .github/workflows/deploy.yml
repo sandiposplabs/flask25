@@ -1,35 +1,59 @@
-name: Flask CI/CD to ACR
+name: Full CI/CD - Flask to Azure Container Apps
 
 on:
   push:
     branches:
       - main
 
+env:
+  IMAGE_NAME: flask-api
+
 jobs:
-  build-and-push:
+  build-deploy:
     runs-on: ubuntu-latest
     steps:
       # 1. Checkout code
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 2. Login to ACR
-      - name: Login to ACR
+      # 2. Azure login
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+
+      # 3. Login to ACR
+      - name: ACR Login
         run: |
           echo ${{ secrets.ACR_PASSWORD }} | docker login ${{ secrets.ACR_LOGIN_SERVER }} \
           -u ${{ secrets.ACR_USERNAME }} --password-stdin
 
-      # 3. Build Docker image
-      - name: Build Image
+      # 4. Build image
+      - name: Build Docker Image
         run: |
-          docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/flask-api:latest ./flask-api
+          docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }} ./flask-api
 
-      # 4. Push Docker image
-      - name: Push Image
+      # 5. Push image
+      - name: Push Docker Image
         run: |
-          docker push ${{ secrets.ACR_LOGIN_SERVER }}/flask-api:latest
+          docker push ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
 
-      # 5. Verify pushed image (optional)
-      - name: List Images (debug)
+      # 6. Deploy to Azure Container Apps
+      - name: Deploy to Container Apps
         run: |
-          echo "Image pushed successfully"
+          az containerapp update \
+            --name ${{ secrets.CONTAINER_APP }} \
+            --resource-group ${{ secrets.RESOURCE_GROUP }} \
+            --image ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+      # 7. Output URL
+      - name: Show App URL
+        run: |
+          az containerapp show \
+            --name ${{ secrets.CONTAINER_APP }} \
+            --resource-group ${{ secrets.RESOURCE_GROUP }} \
+            --query properties.configuration.ingress.fqdn \
+            -o tsv
