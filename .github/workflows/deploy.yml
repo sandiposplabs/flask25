@@ -9,4 +9,14 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - run: echo Hello
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Docker Image
+        run: docker build -t test-image ./flask-api
+
+      - name: Run Container
+        run: |
+          docker run -d -p 5000:5000 test-image
+          sleep 5
+          curl http://localhost:5000
